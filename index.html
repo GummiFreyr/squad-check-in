@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Squad Check-in</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Squad">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#f6f7fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101320" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600&family=Figtree:wght@400;500;600&display=swap">
+<style>
+/* Layout: one quiet centered column — the question, three colored buttons, who's in, a thin week strip */
+:root {
+  --bg: #f6f7fa;
+  --ink: #161b2e;
+  --muted: #8a91a6;
+  --line: #e3e6ee;
+  --yes: #1fa463;
+  --maybe: #f2c21b;
+  --no: #e0434f;
+  --on-yes: #ffffff;
+  --on-maybe: #2a2100;
+  --on-no: #ffffff;
+  --font-display: "Chakra Petch", "Trebuchet MS", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101320; --ink: #eceef6; --muted: #7d849c; --line: #262b3f;
+    --yes: #34c77b; --maybe: #f5cb3a; --no: #f05663;
+    --on-yes: #06200f; --on-maybe: #2a2100; --on-no: #2a070b;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-top: calc(env(safe-area-inset-top, 0px) + 40px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 48px);
+  -webkit-tap-highlight-color: transparent;
+}
+[hidden] { display: none !important; }
+.wrap { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 36px; }
+.date { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; text-align: center; margin: 0 0 6px; }
+.ask { font-family: var(--font-display); font-weight: 600; font-size: 1.6rem; text-align: center; margin: 0; text-wrap: balance; }
+
+.choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.choice {
+  --c: var(--line); --on: var(--ink);
+  font: 600 0.95rem var(--font-body); padding: 16px 6px; border-radius: 12px; cursor: pointer;
+  border: 2px solid var(--c); background: transparent; color: var(--c);
+  transition: background .15s, color .15s, transform .08s;
+}
+.choice[data-s="yes"] { --c: var(--yes); --on: var(--on-yes); }
+.choice[data-s="maybe"] { --c: var(--maybe); --on: var(--on-maybe); }
+.choice[data-s="no"] { --c: var(--no); --on: var(--on-no); }
+@media (hover: hover) { .choice:hover { background: color-mix(in srgb, var(--c) 14%, transparent); } }
+.choice[aria-pressed="true"] { background: var(--c); color: var(--on); }
+.choice:active { transform: scale(0.97); }
+.choice:disabled { opacity: .6; cursor: wait; }
+.choice:focus-visible, .nick:focus-visible, .day:focus-visible, .remind button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+.nick {
+  display: block; margin: 14px auto 0; width: 100%; max-width: 220px; text-align: center;
+  font: 500 16px var(--font-body); color: var(--ink); background: transparent;
+  border: 0; border-bottom: 1px solid var(--line); padding: 6px 4px; border-radius: 0;
+}
+.nick::placeholder { color: var(--muted); }
+.status { font-size: 0.8rem; color: var(--muted); text-align: center; min-height: 1.2em; margin: 8px 0 0; }
+.status.err { color: var(--no); }
+
+.roster { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.roster li { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.dot.yes { background: var(--yes); } .dot.maybe { background: var(--maybe); } .dot.no { background: var(--no); }
+.who { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
+.who small { color: var(--muted); font-weight: 400; }
+.tag { font-size: 0.8rem; font-weight: 600; }
+.tag.yes { color: var(--yes); } .tag.maybe { color: var(--maybe); } .tag.no { color: var(--no); }
+.empty { color: var(--muted); margin: 0; text-align: center; font-size: 0.9rem; }
+
+.week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; border-top: 1px solid var(--line); padding-top: 18px; }
+.day {
+  display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 0; border-radius: 10px;
+  background: transparent; border: 0; cursor: pointer; color: var(--muted); font: inherit;
+}
+.day[aria-current="true"] { color: var(--ink); background: var(--line); }
+.day .dn { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.day .dd { font-size: 0.95rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.day .bar { display: flex; gap: 2px; height: 6px; align-items: center; }
+.day .bar i { width: 6px; height: 6px; border-radius: 50%; background: var(--yes); }
+.day .bar i.maybe { background: var(--maybe); }
+
+.remind { text-align: center; font-size: 0.85rem; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.remind p { margin: 0; max-width: 32ch; }
+.remind button {
+  font: 600 0.85rem var(--font-body); color: var(--ink); background: transparent; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px;
+}
+@media (prefers-reduced-motion: reduce) { .choice { transition: none; } }
+</style>
+<script src="config.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <section>
+    <p class="date" id="dateLabel"></p>
+    <p class="ask" id="askLabel">Can you play tonight?</p>
+  </section>
+
+  <section>
+    <div class="choices" role="group" aria-label="Your answer">
+      <button class="choice" id="btnYes" data-s="yes" aria-pressed="false">I'm in</button>
+      <button class="choice" id="btnMaybe" data-s="maybe" aria-pressed="false">Maybe</button>
+      <button class="choice" id="btnNo" data-s="no" aria-pressed="false">Can't</button>
+    </div>
+    <label for="nick" hidden>Your gamertag</label>
+    <input class="nick" id="nick" maxlength="24" autocomplete="nickname" placeholder="your gamertag">
+    <p class="status" id="status">Connecting…</p>
+  </section>
+
+  <section aria-label="Who's playing">
+    <ul class="roster" id="roster"></ul>
+    <p class="empty" id="rosterEmpty">No answers yet.</p>
+  </section>
+
+  <nav class="week" id="week" aria-label="Pick a day"></nav>
+
+  <section class="remind" id="remind" hidden>
+    <p id="remindText">Get a daily reminder to check in.</p>
+    <button id="remindBtn" type="button">Turn on daily reminder</button>
+  </section>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getMessaging, getToken, isSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
+
+const KEEP_DAYS = 14;
+const $ = (id) => document.getElementById(id);
+const pad = (n) => String(n).padStart(2, "0");
+const keyOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const today = new Date(); today.setHours(0, 0, 0, 0);
+const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(today); d.setDate(d.getDate() + i); return d; });
+const todayKey = keyOf(today);
+
+let selected = todayKey;
+let db = null, myId = null, players = {}, writing = false;
+const buttons = [$("btnYes"), $("btnMaybe"), $("btnNo")];
+const LABEL = { yes: "In", maybe: "Maybe", no: "Can't" };
+
+function setStatus(msg, err) { const s = $("status"); s.textContent = msg; s.classList.toggle("err", !!err); }
+function selDate() { return days.find(d => keyOf(d) === selected) || today; }
+function prettyDay(d) {
+  if (keyOf(d) === todayKey) return "tonight";
+  const t = new Date(today); t.setDate(t.getDate() + 1);
+  if (keyOf(d) === keyOf(t)) return "tomorrow";
+  return "on " + d.toLocaleDateString(undefined, { weekday: "long" });
+}
+function nameFor(id) {
+  const p = players[id];
+  return (p && typeof p.nick === "string" && p.nick.trim()) || "Someone";
+}
+
+function render() {
+  const d = selDate();
+  $("dateLabel").textContent = d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+  $("askLabel").textContent = `Can you play ${prettyDay(d)}?`;
+
+  const ids = Object.keys(players);
+  const order = { yes: 0, maybe: 1, no: 2 };
+  const answered = ids
+    .map(id => ({ id, a: players[id]?.days?.[selected] }))
+    .filter(x => x.a && order[x.a.s] !== undefined)
+    .sort((x, y) => order[x.a.s] - order[y.a.s]);
+
+  const ul = $("roster"); ul.replaceChildren();
+  for (const { id, a } of answered) {
+    const li = document.createElement("li");
+    const dot = document.createElement("span"); dot.className = `dot ${a.s}`;
+    const who = document.createElement("span"); who.className = "who"; who.textContent = nameFor(id);
+    if (id === myId) { const s = document.createElement("small"); s.textContent = " (you)"; who.append(s); }
+    const tag = document.createElement("span"); tag.className = `tag ${a.s}`; tag.textContent = LABEL[a.s];
+    li.append(dot, who, tag);
+    ul.append(li);
+  }
+  $("rosterEmpty").hidden = answered.length > 0;
+
+  const mine = myId && players[myId]?.days?.[selected];
+  buttons.forEach(b => b.setAttribute("aria-pressed", String(!!mine && mine.s === b.dataset.s)));
+  if (document.activeElement !== $("nick") && myId) $("nick").value = players[myId]?.nick || $("nick").value;
+
+  const week = $("week"); week.replaceChildren();
+  for (const day of days) {
+    const k = keyOf(day);
+    const yes = ids.filter(id => players[id]?.days?.[k]?.s === "yes").length;
+    const maybe = ids.filter(id => players[id]?.days?.[k]?.s === "maybe").length;
+    const b = document.createElement("button"); b.className = "day"; b.type = "button";
+    b.setAttribute("aria-current", String(k === selected));
+    b.setAttribute("aria-label", `${day.toLocaleDateString(undefined, { weekday: "long" })}: ${yes} in, ${maybe} maybe`);
+    const dn = document.createElement("span"); dn.className = "dn"; dn.textContent = day.toLocaleDateString(undefined, { weekday: "short" });
+    const dd = document.createElement("span"); dd.className = "dd"; dd.textContent = day.getDate();
+    const bar = document.createElement("span"); bar.className = "bar";
+    for (let i = 0; i < Math.min(yes, 4); i++) bar.append(document.createElement("i"));
+    for (let i = 0; i < Math.min(maybe, 4 - Math.min(yes, 4)); i++) { const m = document.createElement("i"); m.className = "maybe"; bar.append(m); }
+    b.append(dn, dd, bar);
+    b.addEventListener("click", () => { selected = k; render(); });
+    week.append(b);
+  }
+}
+
+function prunedDays(daysMap) {
+  const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - KEEP_DAYS);
+  const ck = keyOf(cutoff), out = {};
+  for (const [k, v] of Object.entries(daysMap || {})) if (k >= ck) out[k] = v;
+  return out;
+}
+
+async function save(patch) {
+  if (!db || !myId) { setStatus("Still connecting. Try again in a second.", true); return; }
+  if (writing) return;
+  writing = true; buttons.forEach(b => b.disabled = true);
+  const prev = players[myId] || {};
+  const next = { nick: prev.nick || "", days: prunedDays(prev.days) };
+  if (patch.nick !== undefined) next.nick = patch.nick;
+  if ("s" in patch) {
+    if (patch.s) next.days[selected] = { s: patch.s };
+    else delete next.days[selected];
+  }
+  try {
+    await setDoc(doc(db, "players", myId), next);
+    players[myId] = next;
+    setStatus(next.nick ? "Saved" : "Saved. Add your gamertag so the squad knows it's you.");
+  } catch {
+    setStatus("Couldn't save. Check your connection and try again.", true);
+  } finally {
+    writing = false; buttons.forEach(b => b.disabled = false); render();
+  }
+}
+
+buttons.forEach(b => b.addEventListener("click", () => {
+  const mine = myId && players[myId]?.days?.[selected];
+  save({ s: mine && mine.s === b.dataset.s ? null : b.dataset.s });
+}));
+let nickTimer;
+$("nick").addEventListener("input", () => {
+  clearTimeout(nickTimer);
+  nickTimer = setTimeout(() => { const v = $("nick").value.trim().slice(0, 24); if (myId && v !== (players[myId]?.nick || "")) save({ nick: v }); }, 900);
+});
+
+render();
+
+// --- Reminders (push notifications) ---------------------------------------
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isInstalled = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+let swReg = null, messaging = null;
+
+async function saveToken() {
+  const token = await getToken(messaging, { vapidKey: self.SQUAD_CONFIG.vapidKey, serviceWorkerRegistration: swReg });
+  if (token && myId) await setDoc(doc(db, "tokens", myId), { token, updatedAt: Date.now() });
+}
+
+async function setupReminders() {
+  const box = $("remind"), text = $("remindText"), btn = $("remindBtn");
+  if (isIOS && !isInstalled) {
+    box.hidden = false; btn.hidden = true;
+    text.textContent = "For a daily reminder, add this to your Home Screen: tap Share, then Add to Home Screen, and open it from there.";
+    return;
+  }
+  if (!("serviceWorker" in navigator) || !("Notification" in window) || !(await isSupported())) return;
+  swReg = await navigator.serviceWorker.register("sw.js", { scope: "./" });
+  messaging = getMessaging();
+  if (Notification.permission === "granted") { saveToken().catch(() => {}); return; }
+  if (Notification.permission === "denied") {
+    box.hidden = false; btn.hidden = true;
+    text.textContent = "Reminders are blocked. Turn on notifications for this app in your phone's settings.";
+    return;
+  }
+  box.hidden = false;
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    const result = await Notification.requestPermission();
+    if (result === "granted") {
+      try { await saveToken(); box.hidden = true; setStatus("Daily reminder is on"); }
+      catch { text.textContent = "Couldn't turn on reminders. Try again later."; btn.disabled = false; }
+    } else {
+      btn.hidden = true;
+      text.textContent = "No reminder. You can turn notifications on later in your phone's settings.";
+    }
+  });
+}
+
+// --- Start ------------------------------------------------------------------
+const cfg = self.SQUAD_CONFIG;
+if (!cfg || !cfg.firebase || cfg.firebase.apiKey === "PASTE_HERE") {
+  setStatus("Setup needed: paste your Firebase settings into config.js.", true);
+} else {
+  const app = initializeApp(cfg.firebase);
+  db = getFirestore(app);
+  const auth = getAuth(app);
+  onAuthStateChanged(auth, (u) => {
+    if (!u) return;
+    const first = !myId;
+    myId = u.uid;
+    if (!first) return;
+    onSnapshot(collection(db, "players"), (snap) => {
+      const next = {};
+      snap.forEach(d => { next[d.id] = d.data(); });
+      players = next;
+      if ($("status").textContent === "Connecting…") setStatus(players[myId]?.nick ? "" : "Pick an answer and add your gamertag.");
+      render();
+    }, () => setStatus("Lost connection. Close and reopen the app.", true));
+    setupReminders().catch(() => {});
+  });
+  signInAnonymously(auth).catch(() => setStatus("Couldn't connect. Check your internet and reopen the app.", true));
+}
+</script>
+</body>
+</html>

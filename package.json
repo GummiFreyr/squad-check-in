@@ -1,0 +1,11 @@
+{
+  "name": "squad-check-in",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "remind": "node scripts/send-reminder.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "12.7.0"
+  }
+}
