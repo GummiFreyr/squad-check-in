@@ -1,0 +1,21 @@
+name: Daily reminder
+
+on:
+  schedule:
+    # 17:00 UTC every day (= 17:00 in Iceland). GitHub may run it a few minutes late.
+    - cron: "0 17 * * *"
+  workflow_dispatch: # lets you press "Run workflow" to test it
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - run: npm run remind
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          APP_URL: ${{ vars.APP_URL }}
