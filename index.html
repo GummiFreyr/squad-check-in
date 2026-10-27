@@ -439,6 +439,17 @@ const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platfor
 const isInstalled = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 let swReg = null, messaging = null;
 
+// The service worker shows notifications and makes the app always load its newest files.
+// Register it right away (not only for reminders) and never let the phone cache sw.js itself.
+const swReady = "serviceWorker" in navigator
+  ? navigator.serviceWorker.register("sw.js", { scope: "./", updateViaCache: "none" }).catch(() => null)
+  : Promise.resolve(null);
+// When an updated service worker takes over, reload once so the new version shows straight away.
+if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (!reloaded) { reloaded = true; location.reload(); } });
+}
+
 async function saveToken() {
   const token = await getToken(messaging, { vapidKey: self.SQUAD_CONFIG.vapidKey, serviceWorkerRegistration: swReg });
   if (token && myId) await setDoc(doc(db, "tokens", myId), { token, updatedAt: Date.now() });
@@ -452,7 +463,8 @@ async function setupReminders() {
     return;
   }
   if (!("serviceWorker" in navigator) || !("Notification" in window) || !(await isSupported())) return;
-  swReg = await navigator.serviceWorker.register("sw.js", { scope: "./" });
+  swReg = await swReady;
+  if (!swReg) return;
   messaging = getMessaging();
   if (Notification.permission === "granted") { saveToken().catch(() => {}); return; }
   if (Notification.permission === "denied") {

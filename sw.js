@@ -6,6 +6,16 @@ importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-com
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
+// Always ask GitHub for the newest app files instead of using a saved copy,
+// so updates show up the next time the app opens. Offline, fall back to the saved copy.
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "GET") return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  event.respondWith(fetch(url.href, { cache: "no-cache", credentials: "same-origin" }).catch(() => fetch(req)));
+});
+
 firebase.initializeApp(self.SQUAD_CONFIG.firebase);
 firebase.messaging(); // shows notifications sent with a webpush "notification" payload
 
