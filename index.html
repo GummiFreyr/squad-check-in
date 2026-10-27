@@ -103,6 +103,8 @@ body {
 .day .bar { display: flex; gap: 2px; height: 6px; align-items: center; }
 .day .bar i { width: 6px; height: 6px; border-radius: 50%; background: var(--yes); }
 .day .bar i.maybe { background: var(--maybe); }
+.day .bar i.no { background: var(--no); }
+.day .bar { flex-wrap: wrap; justify-content: center; height: auto; min-height: 6px; max-width: 34px; row-gap: 2px; }
 
 .times-wrap { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
 .times-label { margin: 0; font-size: 0.8rem; color: var(--muted); text-align: center; }
@@ -352,14 +354,16 @@ function render() {
     const k = keyOf(day);
     const yes = ids.filter(id => players[id]?.days?.[k]?.s === "yes").length;
     const maybe = ids.filter(id => players[id]?.days?.[k]?.s === "maybe").length;
+    const no = ids.filter(id => players[id]?.days?.[k]?.s === "no").length;
     const b = document.createElement("button"); b.className = "day"; b.type = "button";
     b.setAttribute("aria-current", String(k === selected));
-    b.setAttribute("aria-label", `${day.toLocaleDateString(undefined, { weekday: "long" })}: ${yes} in, ${maybe} maybe`);
+    b.setAttribute("aria-label", `${day.toLocaleDateString(undefined, { weekday: "long" })}: ${yes} in, ${maybe} maybe, ${no} can't`);
     const dn = document.createElement("span"); dn.className = "dn"; dn.textContent = day.toLocaleDateString(undefined, { weekday: "short" });
     const dd = document.createElement("span"); dd.className = "dd"; dd.textContent = day.getDate();
     const bar = document.createElement("span"); bar.className = "bar";
-    for (let i = 0; i < Math.min(yes, 4); i++) bar.append(document.createElement("i"));
-    for (let i = 0; i < Math.min(maybe, 4 - Math.min(yes, 4)); i++) { const m = document.createElement("i"); m.className = "maybe"; bar.append(m); }
+    // One dot per answer: green in, yellow maybe, red can't (up to 8, which wraps to two rows).
+    const dots = [...Array(yes).fill(""), ...Array(maybe).fill("maybe"), ...Array(no).fill("no")].slice(0, 8);
+    for (const cls of dots) { const d = document.createElement("i"); if (cls) d.className = cls; bar.append(d); }
     b.append(dn, dd, bar);
     b.addEventListener("click", () => { selected = k; render(); });
     week.append(b);
