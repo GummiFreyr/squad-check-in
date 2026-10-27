@@ -10,39 +10,34 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Squad">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#f6f7fa" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#101320" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#130e1c">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600&family=Figtree:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Creepster&family=Figtree:wght@400;500;600&display=swap">
 <style>
-/* Layout: one quiet centered column — the question, three colored buttons, who's in, a thin week strip */
+/* Halloween night: one quiet centered column under a pumpkin-glow sky.
+   Deliberately dark in both system themes. */
 :root {
-  --bg: #f6f7fa;
-  --ink: #161b2e;
-  --muted: #8a91a6;
-  --line: #e3e6ee;
-  --yes: #1fa463;
-  --maybe: #f2c21b;
-  --no: #e0434f;
-  --on-yes: #ffffff;
-  --on-maybe: #2a2100;
-  --on-no: #ffffff;
-  --font-display: "Chakra Petch", "Trebuchet MS", system-ui, sans-serif;
+  --bg: #130e1c;        /* night purple */
+  --glow: #4a2410;      /* pumpkin light at the top of the sky */
+  --ink: #f3ece2;       /* candle-wax white */
+  --muted: #8f8499;
+  --line: #2c2238;
+  --pumpkin: #ff7b1c;
+  --yes: #7fd858;       /* slime green */
+  --maybe: #ffc13b;     /* candle yellow */
+  --no: #ee3f52;        /* blood red */
+  --on-yes: #102207;
+  --on-maybe: #2b1d00;
+  --on-no: #2a050a;
+  --font-display: "Creepster", "Trebuchet MS", system-ui, sans-serif;
   --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #101320; --ink: #eceef6; --muted: #7d849c; --line: #262b3f;
-    --yes: #34c77b; --maybe: #f5cb3a; --no: #f05663;
-    --on-yes: #06200f; --on-maybe: #2a2100; --on-no: #2a070b;
-    color-scheme: dark;
-  }
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
-  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  margin: 0; min-height: 100vh; color: var(--ink);
+  background: radial-gradient(ellipse 130% 45% at 50% -8%, var(--glow), transparent 70%) no-repeat, var(--bg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-top: calc(env(safe-area-inset-top, 0px) + 40px);
@@ -51,8 +46,12 @@ body {
 }
 [hidden] { display: none !important; }
 .wrap { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 36px; }
-.date { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; text-align: center; margin: 0 0 6px; }
-.ask { font-family: var(--font-display); font-weight: 600; font-size: 1.6rem; text-align: center; margin: 0; text-wrap: balance; }
+.date { font-size: 0.8rem; color: var(--pumpkin); text-transform: uppercase; letter-spacing: 0.12em; text-align: center; margin: 0 0 8px; }
+.ask {
+  font-family: var(--font-display); font-weight: 400; font-size: 2.3rem; line-height: 1.1; letter-spacing: 0.03em;
+  text-align: center; margin: 0; text-wrap: balance; color: var(--pumpkin);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--pumpkin) 45%, transparent);
+}
 
 .choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .choice {
@@ -77,7 +76,7 @@ body {
   border: 0; border-bottom: 1px solid var(--line); padding: 6px 4px; border-radius: 0;
 }
 .nick::placeholder { color: var(--muted); }
-.nick.need { border-bottom: 2px solid var(--maybe); }
+.nick.need { border-bottom: 2px solid var(--pumpkin); }
 .status { font-size: 0.8rem; color: var(--muted); text-align: center; min-height: 1.2em; margin: 8px 0 0; }
 .status.err { color: var(--no); }
 
