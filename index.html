@@ -90,7 +90,7 @@ body {
 .tag.yes { color: var(--yes); } .tag.maybe { color: var(--maybe); } .tag.no { color: var(--no); }
 .empty { color: var(--muted); margin: 0; text-align: center; font-size: 0.9rem; }
 
-.week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; border-top: 1px solid var(--line); padding-top: 18px; }
+.week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; border-bottom: 1px solid var(--line); padding-bottom: 14px; margin-bottom: -12px; }
 .day {
   display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 0; border-radius: 10px;
   background: transparent; border: 0; cursor: pointer; color: var(--muted); font: inherit;
@@ -150,6 +150,7 @@ body {
 </head>
 <body>
 <div class="wrap">
+  <nav class="week" id="week" aria-label="Pick a day"></nav>
   <section>
     <p class="date" id="dateLabel"></p>
     <p class="ask" id="askLabel">Can you play tonight?</p>
@@ -183,7 +184,6 @@ body {
     <p class="empty" id="rosterEmpty">No answers yet.</p>
   </section>
 
-  <nav class="week" id="week" aria-label="Pick a day"></nav>
 
   <section class="remind" id="remind" hidden>
     <p id="remindText">Get a daily reminder to check in.</p>
