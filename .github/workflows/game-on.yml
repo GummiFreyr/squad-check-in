@@ -1,0 +1,21 @@
+name: Game on alert
+
+on:
+  schedule:
+    # Every 15 minutes from 12:00 to 21:45 UTC (= Iceland time). The script never sends at 22:00 or later.
+    - cron: "*/15 12-21 * * *"
+  workflow_dispatch: # lets you press "Run workflow" to test it
+
+jobs:
+  game-on:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm install --no-audit --no-fund
+      - run: node scripts/game-on.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          APP_URL: ${{ vars.APP_URL }}
