@@ -79,6 +79,8 @@ body {
 .nick.need { border-bottom: 2px solid var(--pumpkin); }
 .status { font-size: 0.8rem; color: var(--muted); text-align: center; min-height: 1.2em; margin: 8px 0 0; }
 .status.err { color: var(--no); }
+.claim { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; text-align: center; }
+.claim p { margin: 0; font-size: 0.9rem; }
 
 .roster { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .roster li { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
@@ -176,6 +178,13 @@ body {
         <button class="chip" id="btnClearTime" type="button">No set time</button>
       </div>
     </div>
+    <div class="claim" id="claim" hidden>
+      <p id="claimText"></p>
+      <div class="time-actions">
+        <button class="chip" id="claimYes" type="button">Yes, that's me</button>
+        <button class="chip" id="claimNo" type="button">No, pick another name</button>
+      </div>
+    </div>
     <p class="status" id="status">Connecting…</p>
   </section>
 
@@ -194,7 +203,7 @@ body {
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, doc, onSnapshot, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getMessaging, getToken, isSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
 
 const KEEP_DAYS = 14;
@@ -410,8 +419,11 @@ buttons.forEach(b => b.addEventListener("click", () => {
   }
   const mine = myId && players[myId]?.days?.[selected];
   const patch = { s: mine && mine.s === b.dataset.s ? null : b.dataset.s };
-  if (typed && typed !== (players[myId]?.nick || "")) patch.nick = typed;
   clearTimeout(nickTimer);
+  if (typed && typed !== (players[myId]?.nick || "")) {
+    if (askIfTaken(typed, patch)) return;
+    patch.nick = typed;
+  }
   save(patch);
 }));
 let nickTimer;
@@ -419,8 +431,65 @@ function saveNick() {
   clearTimeout(nickTimer);
   const v = typedNick();
   // Never save an empty name over an existing one.
-  if (myId && v && v !== (players[myId]?.nick || "")) save({ nick: v });
+  if (myId && v && v !== (players[myId]?.nick || "") && !askIfTaken(v)) save({ nick: v });
 }
+
+// --- One person, one entry ----------------------------------------------------
+// If someone types a gamertag that's already in the squad (say after re-adding the app
+// or getting a new phone), ask whether it's them. "Yes" moves the old answers over and
+// deletes the old copy; "No" makes them pick another name, so two people never share one.
+const sameName = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+let claimId = null, claimPatch = null;
+
+function takenBy(name) {
+  const others = Object.keys(players).filter(id => id !== myId && sameName(players[id]?.nick || "", name));
+  // Prefer the copy that actually has answers.
+  others.sort((a, b) => Object.keys(players[b].days || {}).length - Object.keys(players[a].days || {}).length);
+  return others[0] || null;
+}
+
+function askIfTaken(name, patch = null) {
+  const id = takenBy(name);
+  if (!id) return false;
+  claimId = id; claimPatch = patch;
+  $("claimText").textContent = `${players[id].nick} is already in the squad. Is that you?`;
+  $("claim").hidden = false;
+  setStatus("");
+  return true;
+}
+
+function closeClaim() { $("claim").hidden = true; claimId = null; claimPatch = null; }
+
+$("claimNo").addEventListener("click", () => {
+  closeClaim();
+  $("nick").value = players[myId]?.nick || "";
+  $("nick").focus();
+  updateLock();
+  setStatus("Pick a different gamertag.", true);
+});
+
+$("claimYes").addEventListener("click", async () => {
+  const oldId = claimId, pending = claimPatch, old = players[oldId];
+  if (!old || !myId || writing) return;
+  writing = true;
+  const mine = players[myId] || {};
+  // Old answers first, then anything already answered on this phone wins.
+  const next = { nick: old.nick, replaces: oldId, days: prunedDays({ ...(old.days || {}), ...(mine.days || {}) }) };
+  try {
+    await setDoc(doc(db, "players", myId), next);
+    players[myId] = next;
+    try { await deleteDoc(doc(db, "players", oldId)); delete players[oldId]; } catch {}
+    closeClaim();
+    $("nick").value = next.nick;
+    setStatus(`Welcome back, ${next.nick}. Your answers are back.`);
+  } catch {
+    setStatus("Couldn't move your answers. Check your connection and try again.", true);
+  } finally {
+    writing = false;
+    render();
+  }
+  if (pending && "s" in pending) save({ s: pending.s });
+});
 $("nick").addEventListener("input", () => {
   updateLock();
   clearTimeout(nickTimer);
