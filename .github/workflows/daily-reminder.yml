@@ -1,10 +1,9 @@
 name: Daily reminder
 
 on:
-  schedule:
-    # 17:00 UTC every day (= 17:00 in Iceland). GitHub may run it a few minutes late.
-    - cron: "0 17 * * *"
-  workflow_dispatch: # lets you press "Run workflow" to test it
+  # Started at 17:00 Iceland time by cron-job.org (GitHub's own schedule ran hours late).
+  # You can also press "Run workflow" on GitHub to test it.
+  workflow_dispatch:
 
 jobs:
   remind:
