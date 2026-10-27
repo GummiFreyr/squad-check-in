@@ -70,12 +70,14 @@ body {
 .choice:disabled { opacity: .6; cursor: wait; }
 .choice:focus-visible, .nick:focus-visible, .day:focus-visible, .remind button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 
+.choices.locked .choice { opacity: .3; }
 .nick {
-  display: block; margin: 14px auto 0; width: 100%; max-width: 220px; text-align: center;
+  display: block; margin: 0 auto 16px; width: 100%; max-width: 220px; text-align: center;
   font: 500 16px var(--font-body); color: var(--ink); background: transparent;
   border: 0; border-bottom: 1px solid var(--line); padding: 6px 4px; border-radius: 0;
 }
 .nick::placeholder { color: var(--muted); }
+.nick.need { border-bottom: 2px solid var(--maybe); }
 .status { font-size: 0.8rem; color: var(--muted); text-align: center; min-height: 1.2em; margin: 8px 0 0; }
 .status.err { color: var(--no); }
 
@@ -101,6 +103,42 @@ body {
 .day .bar i { width: 6px; height: 6px; border-radius: 50%; background: var(--yes); }
 .day .bar i.maybe { background: var(--maybe); }
 
+.times-wrap { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+.times-label { margin: 0; font-size: 0.8rem; color: var(--muted); text-align: center; }
+/* iPhone-alarm style wheel: 5 rows visible, the middle one is the pick */
+.wheel {
+  --row: 36px;
+  position: relative; display: flex; justify-content: center; align-items: center; gap: 2px;
+  height: calc(var(--row) * 5); user-select: none; -webkit-user-select: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 32%, #000 68%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 32%, #000 68%, transparent);
+}
+.wheel::before {
+  content: ""; position: absolute; left: 50%; top: calc(var(--row) * 2); transform: translateX(-50%);
+  width: 150px; height: var(--row); border-radius: 9px; background: var(--line);
+}
+.wheel-col {
+  position: relative; width: 60px; height: 100%; overflow-y: scroll; scroll-snap-type: y mandatory;
+  padding-block: calc(var(--row) * 2); overscroll-behavior: contain; scrollbar-width: none; outline: none;
+}
+.wheel-col::-webkit-scrollbar { display: none; }
+.wheel-col:focus-visible { box-shadow: inset 0 0 0 2px var(--ink); border-radius: 9px; }
+.wheel-item {
+  height: var(--row); line-height: var(--row); text-align: center; scroll-snap-align: center; cursor: pointer;
+  font: 500 1.35rem var(--font-body); font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.wheel.unset .wheel-item { color: var(--muted); }
+.wheel-sep { position: relative; font: 600 1.35rem var(--font-body); color: var(--ink); }
+.wheel.unset .wheel-sep { color: var(--muted); }
+.time-actions { display: flex; gap: 6px; justify-content: center; }
+.chip {
+  font: 600 0.8rem var(--font-body); color: var(--ink); background: transparent;
+  border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; cursor: pointer; min-height: 32px;
+}
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.when { font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
 .remind { text-align: center; font-size: 0.85rem; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .remind p { margin: 0; max-width: 32ch; }
 .remind button {
@@ -119,13 +157,25 @@ body {
   </section>
 
   <section>
-    <div class="choices" role="group" aria-label="Your answer">
+    <label for="nick" hidden>Your gamertag</label>
+    <input class="nick" id="nick" maxlength="24" autocomplete="nickname" enterkeyhint="done" placeholder="your gamertag">
+    <div class="choices" id="choices" role="group" aria-label="Your answer">
       <button class="choice" id="btnYes" data-s="yes" aria-pressed="false">I'm in</button>
       <button class="choice" id="btnMaybe" data-s="maybe" aria-pressed="false">Maybe</button>
       <button class="choice" id="btnNo" data-s="no" aria-pressed="false">Can't</button>
     </div>
-    <label for="nick" hidden>Your gamertag</label>
-    <input class="nick" id="nick" maxlength="24" autocomplete="nickname" placeholder="your gamertag">
+    <div class="times-wrap" id="timesWrap" hidden>
+      <p class="times-label" id="timesLabel">What time can you get on?</p>
+      <div class="wheel unset" id="wheel" role="group" aria-labelledby="timesLabel">
+        <div class="wheel-col" id="wheelH" tabindex="0" aria-label="Hour"></div>
+        <span class="wheel-sep" aria-hidden="true">:</span>
+        <div class="wheel-col" id="wheelM" tabindex="0" aria-label="Minutes"></div>
+      </div>
+      <div class="time-actions">
+        <button class="chip" id="btnNow" type="button" aria-pressed="false">I'm on now</button>
+        <button class="chip" id="btnClearTime" type="button">No set time</button>
+      </div>
+    </div>
     <p class="status" id="status">Connecting…</p>
   </section>
 
@@ -174,6 +224,89 @@ function nameFor(id) {
   return (p && typeof p.nick === "string" && p.nick.trim()) || "Someone";
 }
 
+// "now" sorts first, then times in order, then people who didn't pick a time.
+const timeKey = (a) => a.from === "now" ? "00" : (a.from || "99");
+const timeText = (from) => from === "now" ? "now" : from;
+
+// --- Time wheel ---------------------------------------------------------------
+const ROW = 36;
+const HOURS = Array.from({ length: 24 }, (_, h) => pad(h));
+const MINS = Array.from({ length: 12 }, (_, i) => pad(i * 5));
+let wheelTouched = false, wheelTimer = null, wheelShown = null;
+
+// Each column repeats its values several times so it feels endless (23 → 00).
+// After every scroll we quietly jump back to the middle copy.
+const COPIES = 7, MID = 3;
+const colIndex = (el, n) => ((Math.round(el.scrollTop / ROW) % n) + n) % n;
+const recenter = (el, n) => { const top = (MID * n + colIndex(el, n)) * ROW; if (el.scrollTop !== top) el.scrollTop = top; };
+const wheelValue = () => `${HOURS[colIndex($("wheelH"), 24)]}:${MINS[colIndex($("wheelM"), 12)]}`;
+const myAnswer = () => myId && players[myId]?.days?.[selected];
+
+function defaultTime() {
+  if (selected !== todayKey) return "20:00";
+  return `${pad(Math.min(new Date().getHours() + 1, 23))}:00`;
+}
+
+// Save once the wheel has settled after the person scrolled or tapped it.
+function scheduleCommit() {
+  wheelTouched = true;
+  clearTimeout(wheelTimer);
+  wheelTimer = setTimeout(() => {
+    wheelTouched = false;
+    recenter($("wheelH"), 24); recenter($("wheelM"), 12);
+    const v = wheelValue(), mine = myAnswer();
+    wheelShown = `${selected}|${v}`;
+    if (mine && mine.from !== v) save({ from: v });
+  }, 400);
+}
+
+function buildCol(el, values) {
+  for (let c = 0; c < COPIES; c++) values.forEach((v, i) => {
+    const row = c * values.length + i;
+    const d = document.createElement("div"); d.className = "wheel-item"; d.textContent = v;
+    if (c !== MID) d.setAttribute("aria-hidden", "true");
+    d.addEventListener("click", () => { el.scrollTo({ top: row * ROW, behavior: "smooth" }); scheduleCommit(); });
+    el.append(d);
+  });
+  el.addEventListener("scroll", () => { if (wheelTouched) scheduleCommit(); }, { passive: true });
+  for (const ev of ["pointerdown", "touchstart", "wheel"]) el.addEventListener(ev, scheduleCommit, { passive: true });
+  el.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    el.scrollBy({ top: e.key === "ArrowDown" ? ROW : -ROW, behavior: "smooth" });
+    scheduleCommit();
+  });
+}
+buildCol($("wheelH"), HOURS);
+buildCol($("wheelM"), MINS);
+
+function setWheel(from) {
+  const [h, m] = from.split(":").map(Number);
+  $("wheelH").scrollTop = (MID * 24 + h) * ROW;
+  $("wheelM").scrollTop = (MID * 12 + Math.min(11, Math.round(m / 5))) * ROW;
+}
+
+$("btnNow").addEventListener("click", () => { const mine = myAnswer(); if (mine) save({ from: mine.from === "now" ? "" : "now" }); });
+$("btnClearTime").addEventListener("click", () => save({ from: "" }));
+
+function renderTimes(mine) {
+  const wrap = $("timesWrap");
+  const show = !!mine && (mine.s === "yes" || mine.s === "maybe");
+  wrap.hidden = !show;
+  if (!show) { wheelShown = null; return; }
+  const set = !!mine.from && mine.from !== "now";
+  $("timesLabel").textContent = mine.from === "now" ? "You're getting on now"
+    : set ? `Online from ${mine.from}`
+    : mine.s === "yes" ? "Scroll to pick when you'll get on" : "If you can, around what time?";
+  $("btnNow").hidden = selected !== todayKey;
+  $("btnNow").setAttribute("aria-pressed", String(mine.from === "now"));
+  $("btnClearTime").hidden = !mine.from;
+  $("wheel").classList.toggle("unset", !set);
+  // Move the wheel only when the answer or day changed, never while someone is scrolling it.
+  const target = set ? mine.from : defaultTime();
+  if (!wheelTouched && wheelShown !== `${selected}|${target}`) { wheelShown = `${selected}|${target}`; setWheel(target); }
+}
+
 function render() {
   const d = selDate();
   $("dateLabel").textContent = d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
@@ -184,7 +317,7 @@ function render() {
   const answered = ids
     .map(id => ({ id, a: players[id]?.days?.[selected] }))
     .filter(x => x.a && order[x.a.s] !== undefined)
-    .sort((x, y) => order[x.a.s] - order[y.a.s]);
+    .sort((x, y) => order[x.a.s] - order[y.a.s] || timeKey(x.a).localeCompare(timeKey(y.a)));
 
   const ul = $("roster"); ul.replaceChildren();
   for (const { id, a } of answered) {
@@ -193,14 +326,18 @@ function render() {
     const who = document.createElement("span"); who.className = "who"; who.textContent = nameFor(id);
     if (id === myId) { const s = document.createElement("small"); s.textContent = " (you)"; who.append(s); }
     const tag = document.createElement("span"); tag.className = `tag ${a.s}`; tag.textContent = LABEL[a.s];
-    li.append(dot, who, tag);
+    li.append(dot, who);
+    if (a.from && a.s !== "no") { const w = document.createElement("span"); w.className = "when"; w.textContent = timeText(a.from); li.append(w); }
+    li.append(tag);
     ul.append(li);
   }
   $("rosterEmpty").hidden = answered.length > 0;
 
   const mine = myId && players[myId]?.days?.[selected];
   buttons.forEach(b => b.setAttribute("aria-pressed", String(!!mine && mine.s === b.dataset.s)));
+  renderTimes(mine);
   if (document.activeElement !== $("nick") && myId) $("nick").value = players[myId]?.nick || $("nick").value;
+  updateLock();
 
   const week = $("week"); week.replaceChildren();
   for (const day of days) {
@@ -236,13 +373,19 @@ async function save(patch) {
   const next = { nick: prev.nick || "", days: prunedDays(prev.days) };
   if (patch.nick !== undefined) next.nick = patch.nick;
   if ("s" in patch) {
-    if (patch.s) next.days[selected] = { s: patch.s };
+    const keepFrom = patch.s && patch.s !== "no" && next.days[selected]?.from;
+    if (patch.s) next.days[selected] = keepFrom ? { s: patch.s, from: keepFrom } : { s: patch.s };
     else delete next.days[selected];
+  }
+  if ("from" in patch && next.days[selected]) {
+    const day = { s: next.days[selected].s };
+    if (patch.from) day.from = patch.from;
+    next.days[selected] = day;
   }
   try {
     await setDoc(doc(db, "players", myId), next);
     players[myId] = next;
-    setStatus(next.nick ? "Saved" : "Saved. Add your gamertag so the squad knows it's you.");
+    setStatus("Saved");
   } catch {
     setStatus("Couldn't save. Check your connection and try again.", true);
   } finally {
@@ -250,14 +393,44 @@ async function save(patch) {
   }
 }
 
+// A gamertag is required before answering, so nobody shows up as "Someone".
+const typedNick = () => $("nick").value.trim().slice(0, 24);
+const hasName = () => !!(players[myId]?.nick || typedNick());
+function updateLock() {
+  const named = hasName();
+  $("choices").classList.toggle("locked", !named);
+  $("nick").classList.toggle("need", !named);
+}
+
 buttons.forEach(b => b.addEventListener("click", () => {
+  const typed = typedNick();
+  if (!players[myId]?.nick && !typed) {
+    setStatus("Type your gamertag first so the squad knows it's you.", true);
+    $("nick").focus();
+    return;
+  }
   const mine = myId && players[myId]?.days?.[selected];
-  save({ s: mine && mine.s === b.dataset.s ? null : b.dataset.s });
+  const patch = { s: mine && mine.s === b.dataset.s ? null : b.dataset.s };
+  if (typed && typed !== (players[myId]?.nick || "")) patch.nick = typed;
+  clearTimeout(nickTimer);
+  save(patch);
 }));
 let nickTimer;
-$("nick").addEventListener("input", () => {
+function saveNick() {
   clearTimeout(nickTimer);
-  nickTimer = setTimeout(() => { const v = $("nick").value.trim().slice(0, 24); if (myId && v !== (players[myId]?.nick || "")) save({ nick: v }); }, 900);
+  const v = typedNick();
+  // Never save an empty name over an existing one.
+  if (myId && v && v !== (players[myId]?.nick || "")) save({ nick: v });
+}
+$("nick").addEventListener("input", () => {
+  updateLock();
+  clearTimeout(nickTimer);
+  nickTimer = setTimeout(saveNick, 900);
+});
+$("nick").addEventListener("keydown", (e) => { if (e.key === "Enter") $("nick").blur(); });
+$("nick").addEventListener("blur", () => {
+  if (!typedNick() && players[myId]?.nick) $("nick").value = players[myId].nick;
+  saveNick(); updateLock();
 });
 
 render();
@@ -319,7 +492,7 @@ if (!cfg || !cfg.firebase || cfg.firebase.apiKey === "PASTE_HERE") {
       const next = {};
       snap.forEach(d => { next[d.id] = d.data(); });
       players = next;
-      if ($("status").textContent === "Connecting…") setStatus(players[myId]?.nick ? "" : "Pick an answer and add your gamertag.");
+      if ($("status").textContent === "Connecting…") setStatus(players[myId]?.nick ? "" : "Type your gamertag to answer.");
       render();
     }, () => setStatus("Lost connection. Close and reopen the app.", true));
     setupReminders().catch(() => {});
