@@ -472,67 +472,98 @@ function renderWeek(ids) {
 }
 
 // Switching day: the bubble slides, and the question and list glide in from that side.
-function selectDay(i) {
+function selectDay(i, quiet = false) {
   const old = days.findIndex(d => keyOf(d) === selected);
   if (i === old) return;
   haptic();
   selected = keyOf(days[i]);
-  rosterSwap = true;
+  rosterSwap = !quiet;
   render();
-  if (reduceMotion) return;
+  if (reduceMotion || quiet) return;
   const dx = (i > old ? 1 : -1) * 18;
   for (const el of [$("dateLabel"), $("titleWrap")]) {
     el.animate([{ opacity: 0, transform: `translateX(${dx}px)` }, { opacity: 1, transform: "none" }], { duration: 360, easing: EASE });
   }
 }
 
-// --- Swipe left or right anywhere on the page to change day ----------------------
-// The question and list follow your finger and the week bubble slides along with it;
-// let go past a short distance and it moves to the next day, otherwise it springs back.
-(function swipeDays() {
-  const area = document.querySelector(".wrap");
-  const moving = () => [$("dateLabel"), $("titleWrap"), $("rosterSection")];
-  let sx = 0, sy = 0, dx = 0, mode = null, idx = 0;
+// --- Changing day by gesture ---------------------------------------------------
+// 1. Drag along the week bar: the bubble follows your finger and lands on the day you let go on.
+// 2. Swipe the page sideways, like flipping pages on iPhone: the page moves with your finger;
+//    let go past a quarter of the screen (or flick) and it slides away while the next day slides
+//    in from the other side. Swipe left for later days, right for earlier ones. Short drags spring back.
+(function dayGestures() {
+  const area = document.querySelector(".wrap"), week = $("week");
+  const pages = () => [$("dateLabel"), $("titleWrap"), $("rosterSection")];
+  const SPRING = "cubic-bezier(.34, 1.2, .64, 1)";
+  let sx = 0, sy = 0, dx = 0, mode = null, idx = 0, lastX = 0, lastT = 0, vx = 0, scrubIdx = -1, busy = false;
+
+  const slotOf = (x) => {
+    const r = week.getBoundingClientRect(), slot = (r.width - 8 - 24) / 7;
+    return Math.max(0, Math.min(6, (x - r.left - 4 - slot / 2) / (slot + 4)));
+  };
+  const setPages = (x, withTransition) => {
+    for (const el of pages()) {
+      el.style.transition = withTransition || "none";
+      el.style.transform = x ? `translateX(${x}px)` : "";
+      el.style.opacity = x ? String(1 - Math.min(0.6, Math.abs(x) / (innerWidth * 1.1))) : "";
+    }
+  };
+
   area.addEventListener("touchstart", (e) => {
-    if (e.touches.length !== 1 || e.target.closest("#wheel, input, .claim")) { mode = "off"; return; }
-    sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; mode = null;
+    if (busy || e.touches.length !== 1 || e.target.closest("#wheel, input, .claim")) { mode = "off"; return; }
+    const t = e.touches[0];
+    sx = lastX = t.clientX; sy = t.clientY; lastT = e.timeStamp; dx = 0; vx = 0; mode = null;
     idx = Math.max(0, days.findIndex(d => keyOf(d) === selected));
+    scrubIdx = idx;
   }, { passive: true });
+
   area.addEventListener("touchmove", (e) => {
     if (mode === "off" || mode === "v") return;
-    const x = e.touches[0].clientX - sx, y = e.touches[0].clientY - sy;
+    const t = e.touches[0], x = t.clientX - sx, y = t.clientY - sy;
+    if (e.timeStamp > lastT) { vx = (t.clientX - lastX) / (e.timeStamp - lastT); lastX = t.clientX; lastT = e.timeStamp; }
     if (!mode) {
-      if (Math.abs(x) > 10 && Math.abs(x) > Math.abs(y) * 1.3) mode = "h";
-      else if (Math.abs(y) > 10) { mode = "v"; return; }
+      if (Math.abs(x) > 8 && Math.abs(x) > Math.abs(y) * 1.2) mode = e.target.closest("#week") ? "scrub" : "page";
+      else if (Math.abs(y) > 8) { mode = "v"; return; }
       else return;
     }
+    if (mode === "scrub") {
+      const f = slotOf(t.clientX);
+      pill.style.transition = "none";
+      pill.style.transform = `translateX(calc(${f} * (100% + 4px)))`;
+      const near = Math.round(f);
+      if (near !== scrubIdx) { scrubIdx = near; haptic(); }
+      return;
+    }
     const edge = (idx === 0 && x > 0) || (idx === days.length - 1 && x < 0);
-    dx = edge ? x * 0.25 : x;
-    for (const el of moving()) {
-      el.style.transition = "none";
-      el.style.transform = `translateX(${dx * 0.45}px)`;
-      el.style.opacity = String(1 - Math.min(0.45, Math.abs(dx) / 500));
-    }
-    const frac = Math.max(-1, Math.min(1, -dx / 180));
-    pill.style.transition = "none";
-    pill.style.transform = `translateX(calc(${idx + frac} * (100% + 4px)))`;
+    dx = edge ? x / 3 : x;
+    setPages(dx);
   }, { passive: true });
+
   const end = () => {
-    if (mode !== "h") { mode = null; return; }
-    mode = null;
-    pill.style.transition = "";
-    const go = Math.abs(dx) > 60 ? (dx < 0 ? 1 : -1) : 0;
-    const next = idx + go;
-    if (go && next >= 0 && next < days.length) {
-      for (const el of moving()) { el.style.transition = "none"; el.style.transform = ""; el.style.opacity = ""; }
-      selectDay(next);
-    } else {
-      for (const el of moving()) {
-        el.style.transition = `transform .45s cubic-bezier(.34, 1.3, .64, 1), opacity .3s ${EASE}`;
-        el.style.transform = ""; el.style.opacity = "";
-      }
-      renderWeek(Object.keys(players));
+    const m = mode; mode = null;
+    if (m === "scrub") {
+      pill.style.transition = "";
+      if (scrubIdx !== idx) selectDay(scrubIdx); else renderWeek(Object.keys(players));
+      return;
     }
+    if (m !== "page") return;
+    const dir = (dx < -innerWidth * 0.25 || vx < -0.45) ? 1 : (dx > innerWidth * 0.25 || vx > 0.45) ? -1 : 0;
+    const next = idx + dir;
+    if (!dir || next < 0 || next >= days.length) { setPages(0, `transform .5s ${SPRING}, opacity .3s ${EASE}`); return; }
+    if (reduceMotion) { setPages(0); selectDay(next); return; }
+    // Slide the current day away in the direction of the swipe, then bring the next one in.
+    busy = true;
+    const out = -dir * innerWidth * 0.55;
+    setPages(out, `transform .18s cubic-bezier(.4, 0, 1, 1), opacity .18s linear`);
+    for (const el of pages()) el.style.opacity = "0";
+    setTimeout(() => {
+      selectDay(next, true);
+      setPages(dir * innerWidth * 0.35);
+      for (const el of pages()) el.style.opacity = "0";
+      void area.offsetWidth;
+      setPages(0, `transform .42s cubic-bezier(.2, .9, .25, 1), opacity .3s ${EASE}`);
+      setTimeout(() => { busy = false; }, 200);
+    }, 170);
   };
   area.addEventListener("touchend", end);
   area.addEventListener("touchcancel", end);
