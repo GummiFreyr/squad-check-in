@@ -167,23 +167,6 @@ body::before {
 @keyframes dotIn { from { transform: scale(0); } }
 
 /* Time picker folds open smoothly */
-/* Game on banner: slides down when 3 or more are in, with one soft shine across it */
-.gameon {
-  position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; gap: 1px;
-  margin: 0 0 18px; padding: 10px 16px; border-radius: 14px; text-align: center;
-  font: 600 .92rem var(--font); color: #2b1d00;
-  background: linear-gradient(135deg, #f7d77e, var(--accent) 55%, #d9a93f);
-  box-shadow: 0 8px 24px -12px rgba(233,196,106,.7);
-}
-.gameon small { font-weight: 500; font-size: .8rem; opacity: .75; }
-.gameon::after {
-  content: ""; position: absolute; inset: 0; transform: translateX(-120%);
-  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.55) 50%, transparent 65%);
-}
-.gameon.shine::after { animation: shine 1.3s .35s var(--ease) 2; }
-@keyframes shine { to { transform: translateX(120%); } }
-#gameOnWrap { transform: translateY(-8px); transition: grid-template-rows .42s var(--ease), opacity .3s var(--ease), transform .45s var(--spring); }
-#gameOnWrap.open { transform: none; }
 /* Sparkles when you tap I'm in */
 #fx { position: fixed; inset: 0; pointer-events: none; z-index: 50; overflow: hidden; }
 #fx i { position: absolute; left: 0; top: 0; border-radius: 50%; will-change: transform, opacity; }
@@ -248,7 +231,6 @@ body::before {
 <div class="wrap">
   <nav class="week" id="week" aria-label="Pick a day"></nav>
   <section>
-    <div class="collapse" id="gameOnWrap" aria-live="polite"><div class="inner"><div class="gameon" id="gameOn"></div></div></div>
     <p class="date" id="dateLabel"></p>
     <div class="title-wrap" id="titleWrap">
       <svg class="lights back" id="lightsBack" aria-hidden="true"></svg>
@@ -445,7 +427,6 @@ function render() {
 
   renderRoster(answered);
   $("rosterEmpty").hidden = answered.length > 0;
-  renderGameOn(answered, d);
 
   const mine = myId && players[myId]?.days?.[selected];
   buttons.forEach(b => b.setAttribute("aria-pressed", String(!!mine && mine.s === b.dataset.s)));
@@ -454,25 +435,6 @@ function render() {
   updateLock();
 
   renderWeek(ids);
-}
-
-// Game on: once 3 or more are in for the picked day, a gold banner slides down with their names.
-let gameOnShown = "";
-function renderGameOn(answered, d) {
-  const ins = answered.filter(x => x.a.s === "yes").map(x => nameFor(x.id));
-  const wrap = $("gameOnWrap"), on = ins.length >= 3;
-  wrap.classList.toggle("open", on);
-  wrap.inert = !on;
-  if (!on) { gameOnShown = ""; return; }
-  const names = ins.length > 3 ? `${ins.slice(0, 3).join(", ")} +${ins.length - 3}` : ins.join(", ");
-  const el = $("gameOn");
-  el.innerHTML = "";
-  const t = document.createElement("span"); t.textContent = `Game on ${prettyDay(d)}`;
-  const n = document.createElement("small"); n.textContent = names;
-  el.append(t, n);
-  const sig = `${selected}|${ins.length}`;
-  if (sig !== gameOnShown && !reduceMotion) { el.classList.remove("shine"); void el.offsetWidth; el.classList.add("shine"); }
-  gameOnShown = sig;
 }
 
 // --- Week strip: built once, updated in place so the selection bubble can slide ----
@@ -532,7 +494,7 @@ function selectDay(i) {
   const moving = () => [$("dateLabel"), $("titleWrap"), $("rosterSection")];
   let sx = 0, sy = 0, dx = 0, mode = null, idx = 0;
   area.addEventListener("touchstart", (e) => {
-    if (e.touches.length !== 1 || e.target.closest("#wheel, input, .claim, .gameon")) { mode = "off"; return; }
+    if (e.touches.length !== 1 || e.target.closest("#wheel, input, .claim")) { mode = "off"; return; }
     sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; mode = null;
     idx = Math.max(0, days.findIndex(d => keyOf(d) === selected));
   }, { passive: true });
