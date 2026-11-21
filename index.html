@@ -92,10 +92,12 @@ body::before {
 .lights .cord { fill: none; stroke: var(--cordc); stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
 .lights .socket { fill: #9aa6a2; }
 .lights .plug { fill: var(--cordc); }
-.lights .bulb { animation: twinkle 3.6s ease-in-out infinite; }
+/* Twinkle in small steps (about 2 a second per bulb group) instead of 60 redraws a second:
+   looks the same, uses a fraction of the battery. */
+.lights .bulb { animation: twinkle 3.6s steps(8) infinite; }
 .lights .bulb.b { animation-duration: 4.4s; animation-delay: -1.2s; }
 .lights .bulb.c { animation-duration: 5.2s; animation-delay: -2.6s; }
-@keyframes twinkle { 0%, 100% { opacity: 1; } 50% { opacity: .72; } }
+@keyframes twinkle { 0%, 100% { opacity: 1; } 50% { opacity: .74; } }
 
 /* Answer buttons: springy press, colour fills in when chosen */
 .choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; transition: opacity .3s var(--ease); }
@@ -897,7 +899,18 @@ function drawLights() {
 
   const d = pieces.map(pts => "M" + pts.map(p => p.x.toFixed(1) + " " + p.y.toFixed(1)).join(" L")).join(" ");
   $("lightsBack").innerHTML = "";
-  $("lightsFront").innerHTML = `<path class="cord" pathLength="1" d="${d}"/>` + bulbs;
+  const svgEl = $("lightsFront");
+  svgEl.innerHTML = `<g><path class="cord" pathLength="1" d="${d}"/>${bulbs}</g>`;
+  // On very narrow phones, pull the whole string in a touch so no bulb sticks off the screen.
+  // Measured relative to the title box, so a swipe or slide in progress doesn't throw it off.
+  // The title box is always centred on the screen.
+  const sr = svgEl.getBoundingClientRect(), gr = svgEl.firstChild.getBoundingClientRect();
+  const reach = Math.max(w / 2 - (gr.left - sr.left), (gr.right - sr.left) - w / 2);
+  const limit = document.documentElement.clientWidth / 2 - 4;  // stay 4px inside the screen
+  if (gr.width && reach > limit) {
+    const k = limit / reach, mid = w / 2;
+    svgEl.firstChild.setAttribute("transform", `translate(${mid} 0) scale(${k.toFixed(4)} 1) translate(${-mid} 0)`);
+  }
   if (!lightsShown && document.fonts?.check?.("1em Sacramento")) { lightsShown = true; switchOnLights(); }
 }
 
