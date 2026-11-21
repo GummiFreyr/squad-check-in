@@ -24,7 +24,7 @@
   --ink: #f4efe6;       /* snow white */
   --muted: #8d9a97;
   --line: #22302e;
-  --card: #15201f;      /* solid, so snow never shows through cards */
+  --card: #15201f; --card-solid: #15201f;      /* solid, so snow never shows through cards */
   --accent: #e9c46a;    /* candle gold */
   --berry: #e5484d;
   --yes: #4cc38a;       /* holly green */
@@ -67,6 +67,7 @@ body::before {
   -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent);
   mask-image: linear-gradient(to bottom, #000 45%, transparent);
 }
+.wrap { touch-action: pan-y; }
 .wrap { position: relative; z-index: 1; max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 30px; }
 .date { font-size: 0.8rem; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; text-align: center; margin: 0 0 6px; }
 .ask {
@@ -166,6 +167,26 @@ body::before {
 @keyframes dotIn { from { transform: scale(0); } }
 
 /* Time picker folds open smoothly */
+/* Game on banner: slides down when 3 or more are in, with one soft shine across it */
+.gameon {
+  position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  margin: 0 0 18px; padding: 10px 16px; border-radius: 14px; text-align: center;
+  font: 600 .92rem var(--font); color: #2b1d00;
+  background: linear-gradient(135deg, #f7d77e, var(--accent) 55%, #d9a93f);
+  box-shadow: 0 8px 24px -12px rgba(233,196,106,.7);
+}
+.gameon small { font-weight: 500; font-size: .8rem; opacity: .75; }
+.gameon::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-120%);
+  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.55) 50%, transparent 65%);
+}
+.gameon.shine::after { animation: shine 1.3s .35s var(--ease) 2; }
+@keyframes shine { to { transform: translateX(120%); } }
+#gameOnWrap { transform: translateY(-8px); transition: grid-template-rows .42s var(--ease), opacity .3s var(--ease), transform .45s var(--spring); }
+#gameOnWrap.open { transform: none; }
+/* Sparkles when you tap I'm in */
+#fx { position: fixed; inset: 0; pointer-events: none; z-index: 50; overflow: hidden; }
+#fx i { position: absolute; left: 0; top: 0; border-radius: 50%; will-change: transform, opacity; }
 .collapse { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .42s var(--ease), opacity .3s var(--ease); }
 .collapse.open { grid-template-rows: 1fr; opacity: 1; }
 .collapse > .inner { min-height: 0; overflow: hidden; }
@@ -223,9 +244,11 @@ body::before {
 </head>
 <body>
 <canvas id="snow" aria-hidden="true"></canvas>
+<div id="fx" aria-hidden="true"></div>
 <div class="wrap">
   <nav class="week" id="week" aria-label="Pick a day"></nav>
   <section>
+    <div class="collapse" id="gameOnWrap" aria-live="polite"><div class="inner"><div class="gameon" id="gameOn"></div></div></div>
     <p class="date" id="dateLabel"></p>
     <div class="title-wrap" id="titleWrap">
       <svg class="lights back" id="lightsBack" aria-hidden="true"></svg>
@@ -266,7 +289,7 @@ body::before {
     <p class="status show" id="status">Connecting…</p>
   </section>
 
-  <section aria-label="Who's playing">
+  <section aria-label="Who's playing" id="rosterSection">
     <ul class="roster" id="roster"></ul>
     <p class="empty" id="rosterEmpty">No answers yet.</p>
   </section>
@@ -422,6 +445,7 @@ function render() {
 
   renderRoster(answered);
   $("rosterEmpty").hidden = answered.length > 0;
+  renderGameOn(answered, d);
 
   const mine = myId && players[myId]?.days?.[selected];
   buttons.forEach(b => b.setAttribute("aria-pressed", String(!!mine && mine.s === b.dataset.s)));
@@ -430,6 +454,25 @@ function render() {
   updateLock();
 
   renderWeek(ids);
+}
+
+// Game on: once 3 or more are in for the picked day, a gold banner slides down with their names.
+let gameOnShown = "";
+function renderGameOn(answered, d) {
+  const ins = answered.filter(x => x.a.s === "yes").map(x => nameFor(x.id));
+  const wrap = $("gameOnWrap"), on = ins.length >= 3;
+  wrap.classList.toggle("open", on);
+  wrap.inert = !on;
+  if (!on) { gameOnShown = ""; return; }
+  const names = ins.length > 3 ? `${ins.slice(0, 3).join(", ")} +${ins.length - 3}` : ins.join(", ");
+  const el = $("gameOn");
+  el.innerHTML = "";
+  const t = document.createElement("span"); t.textContent = `Game on ${prettyDay(d)}`;
+  const n = document.createElement("small"); n.textContent = names;
+  el.append(t, n);
+  const sig = `${selected}|${ins.length}`;
+  if (sig !== gameOnShown && !reduceMotion) { el.classList.remove("shine"); void el.offsetWidth; el.classList.add("shine"); }
+  gameOnShown = sig;
 }
 
 // --- Week strip: built once, updated in place so the selection bubble can slide ----
@@ -476,10 +519,62 @@ function selectDay(i) {
   render();
   if (reduceMotion) return;
   const dx = (i > old ? 1 : -1) * 18;
-  for (const el of [$("dateLabel"), $("askLabel")]) {
-    el.animate([{ opacity: 0, transform: `translateX(${dx}px)` }, { opacity: 1, transform: "none" }], { duration: 320, easing: EASE });
+  for (const el of [$("dateLabel"), $("titleWrap")]) {
+    el.animate([{ opacity: 0, transform: `translateX(${dx}px)` }, { opacity: 1, transform: "none" }], { duration: 360, easing: EASE });
   }
 }
+
+// --- Swipe left or right anywhere on the page to change day ----------------------
+// The question and list follow your finger and the week bubble slides along with it;
+// let go past a short distance and it moves to the next day, otherwise it springs back.
+(function swipeDays() {
+  const area = document.querySelector(".wrap");
+  const moving = () => [$("dateLabel"), $("titleWrap"), $("rosterSection")];
+  let sx = 0, sy = 0, dx = 0, mode = null, idx = 0;
+  area.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1 || e.target.closest("#wheel, input, .claim, .gameon")) { mode = "off"; return; }
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; mode = null;
+    idx = Math.max(0, days.findIndex(d => keyOf(d) === selected));
+  }, { passive: true });
+  area.addEventListener("touchmove", (e) => {
+    if (mode === "off" || mode === "v") return;
+    const x = e.touches[0].clientX - sx, y = e.touches[0].clientY - sy;
+    if (!mode) {
+      if (Math.abs(x) > 10 && Math.abs(x) > Math.abs(y) * 1.3) mode = "h";
+      else if (Math.abs(y) > 10) { mode = "v"; return; }
+      else return;
+    }
+    const edge = (idx === 0 && x > 0) || (idx === days.length - 1 && x < 0);
+    dx = edge ? x * 0.25 : x;
+    for (const el of moving()) {
+      el.style.transition = "none";
+      el.style.transform = `translateX(${dx * 0.45}px)`;
+      el.style.opacity = String(1 - Math.min(0.45, Math.abs(dx) / 500));
+    }
+    const frac = Math.max(-1, Math.min(1, -dx / 180));
+    pill.style.transition = "none";
+    pill.style.transform = `translateX(calc(${idx + frac} * (100% + 4px)))`;
+  }, { passive: true });
+  const end = () => {
+    if (mode !== "h") { mode = null; return; }
+    mode = null;
+    pill.style.transition = "";
+    const go = Math.abs(dx) > 60 ? (dx < 0 ? 1 : -1) : 0;
+    const next = idx + go;
+    if (go && next >= 0 && next < days.length) {
+      for (const el of moving()) { el.style.transition = "none"; el.style.transform = ""; el.style.opacity = ""; }
+      selectDay(next);
+    } else {
+      for (const el of moving()) {
+        el.style.transition = `transform .45s cubic-bezier(.34, 1.3, .64, 1), opacity .3s ${EASE}`;
+        el.style.transform = ""; el.style.opacity = "";
+      }
+      renderWeek(Object.keys(players));
+    }
+  };
+  area.addEventListener("touchend", end);
+  area.addEventListener("touchcancel", end);
+})();
 
 // --- Who's playing: rows are kept between renders so they can glide when the order changes ---
 const rowEls = new Map();
@@ -492,6 +587,7 @@ function renderRoster(answered) {
   const keep = new Set(answered.map(x => x.id));
   for (const [id, li] of rowEls) if (swap || !keep.has(id)) { li.remove(); rowEls.delete(id); }
 
+  const placed = [];
   answered.forEach(({ id, a }, i) => {
     let li = rowEls.get(id);
     const isNew = !li;
@@ -505,16 +601,19 @@ function renderRoster(answered) {
     parts.push(tag);
     li.replaceChildren(...parts);
     ul.append(li); // appending an existing row moves it into its new place
-
-    if (reduceMotion) return;
+    placed.push({ id, li, isNew, i });
+  });
+  // Measure only once every row is in its final place, then glide each from where it was.
+  if (reduceMotion) return;
+  for (const { id, li, isNew, i } of placed) {
     if (isNew) {
-      li.animate([{ opacity: 0, transform: "translateY(8px) scale(.98)" }, { opacity: 1, transform: "none" }],
-        { duration: 340, delay: swap ? i * 35 : 0, easing: EASE, fill: "backwards" });
+      li.animate([{ opacity: 0, transform: "translateY(10px) scale(.97)" }, { opacity: 1, transform: "none" }],
+        { duration: 420, delay: swap ? i * 45 : 0, easing: "cubic-bezier(.34, 1.25, .64, 1)", fill: "backwards" });
     } else {
       const dy = before.get(id) - li.getBoundingClientRect().top;
       if (Math.abs(dy) > 1) li.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: 420, easing: "cubic-bezier(.34, 1.3, .64, 1)" });
     }
-  });
+  }
 }
 
 function prunedDays(daysMap) {
@@ -581,6 +680,10 @@ buttons.forEach(b => b.addEventListener("click", () => {
   haptic();
   if (patch.s && !reduceMotion) { b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop"); }
   save(patch);
+  if (patch.s) {
+    pulseLights({ yes: "#4cc38a", maybe: "#f2c14e", no: "#e5484d" }[patch.s]);
+    if (patch.s === "yes") sparkle(b);
+  }
 }));
 let nickTimer;
 function saveNick() {
@@ -728,8 +831,8 @@ function drawLights() {
     const col = BULB_COLORS[k % 4], tw = ["a", "b", "c"][k % 3]; k++;
     bulbs += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${deg.toFixed(0)})">` +
       `<rect class="socket" x="-2.2" y="-1" width="4.4" height="5" rx="1"/>` +
-      `<g class="bulb ${tw}"><ellipse cx="0" cy="9" rx="7.5" ry="9.5" fill="${col}" opacity=".18"/>` +
-      `<path d="M-3 4 C-4.6 7 -4.4 11.5 0 14 C4.4 11.5 4.6 7 3 4 Z" fill="${col}"/>` +
+      `<g class="bulb ${tw}" data-c="${col}"><ellipse class="halo" cx="0" cy="9" rx="7.5" ry="9.5" fill="${col}" opacity=".18"/>` +
+      `<path class="glass" d="M-3 4 C-4.6 7 -4.4 11.5 0 14 C4.4 11.5 4.6 7 3 4 Z" fill="${col}"/>` +
       `<ellipse cx="-1.2" cy="7.5" rx=".9" ry="1.8" fill="#fff" opacity=".55"/></g></g>`;
   };
   // Bulbs spaced along a piece, hanging to one side of it ("down" picks the lower side).
@@ -801,7 +904,56 @@ function drawLights() {
 
   const d = pieces.map(pts => "M" + pts.map(p => p.x.toFixed(1) + " " + p.y.toFixed(1)).join(" L")).join(" ");
   $("lightsBack").innerHTML = "";
-  $("lightsFront").innerHTML = `<path class="cord" d="${d}"/>` + bulbs;
+  $("lightsFront").innerHTML = `<path class="cord" pathLength="1" d="${d}"/>` + bulbs;
+  if (!lightsShown && document.fonts?.check?.("1em Sacramento")) { lightsShown = true; switchOnLights(); }
+}
+
+// The first time the app opens, the cord draws itself in and the bulbs light up one by one,
+// like plugging in a string of lights. About a second, once.
+let lightsShown = false;
+function switchOnLights() {
+  if (reduceMotion) return;
+  const svg = $("lightsFront");
+  svg.querySelector(".cord")?.animate([{ strokeDasharray: 1, strokeDashoffset: 1 }, { strokeDasharray: 1, strokeDashoffset: 0 }],
+    { duration: 900, easing: "cubic-bezier(.4, 0, .2, 1)" });
+  [...svg.querySelectorAll(".bulb")].forEach((b, i) => {
+    b.animate([{ opacity: 0.08, transform: "scale(.6)" }, { opacity: 1, transform: "scale(1.12)", offset: 0.6 }, { opacity: 1, transform: "none" }],
+      { duration: 420, delay: 500 + i * 55, easing: EASE, fill: "backwards" });
+  });
+}
+
+// After you answer, a wave of your answer's colour runs along the bulbs and fades back.
+function pulseLights(color) {
+  if (reduceMotion) return;
+  [...$("lightsFront").querySelectorAll(".bulb")].forEach((b, i) => {
+    const c = b.dataset.c;
+    for (const part of b.querySelectorAll(".glass, .halo")) {
+      part.animate([{ fill: c }, { fill: color, offset: 0.25 }, { fill: color, offset: 0.65 }, { fill: c }],
+        { duration: 1300, delay: i * 30, easing: "ease-in-out" });
+    }
+  });
+}
+
+// A small burst of gold sparkles from the button when you tap I'm in.
+function sparkle(btn) {
+  if (reduceMotion) return;
+  const r = btn.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const fx = $("fx"), COLS = ["#ffe39a", "#e9c46a", "#ffffff", "#4cc38a"];
+  for (let i = 0; i < 14; i++) {
+    const p = document.createElement("i");
+    const size = 3 + Math.random() * 4, ang = (i / 14) * Math.PI * 2 + Math.random() * 0.4;
+    const dist = 38 + Math.random() * 46;
+    p.style.width = p.style.height = size + "px";
+    p.style.background = COLS[i % COLS.length];
+    p.style.boxShadow = `0 0 6px ${COLS[i % COLS.length]}`;
+    fx.append(p);
+    const x = cx + Math.cos(ang) * dist, y = cy + Math.sin(ang) * dist * 0.8;
+    p.animate([
+      { transform: `translate(${cx}px, ${cy}px) scale(.4)`, opacity: 1 },
+      { transform: `translate(${x}px, ${y}px) scale(1)`, opacity: 1, offset: 0.55 },
+      { transform: `translate(${x}px, ${y + 10}px) scale(.2)`, opacity: 0 },
+    ], { duration: 700 + Math.random() * 200, easing: "cubic-bezier(.2, .8, .2, 1)" }).onfinish = () => p.remove();
+  }
 }
 document.fonts?.ready.then(() => { lightsKey = ""; drawLights(); });
 new ResizeObserver(drawLights).observe($("titleWrap"));
@@ -823,15 +975,18 @@ render();
     canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
-  const make = (top) => ({
-    x: Math.random() * w, y: top ? -6 : Math.random() * h,
-    r: 0.8 + Math.random() * 1.6, vy: 10 + Math.random() * 18, sway: Math.random() * Math.PI * 2,
-    layer: Math.floor(Math.random() * 3), // 3 brightness levels, each drawn as one batch
-  });
+  // Three depths: far flakes are tiny, dim and slow; near ones are bigger, softer and faster.
+  const SIZE = [[0.5, 1], [1, 1.7], [1.8, 2.8]], SPEED = [[7, 12], [12, 20], [20, 30]];
+  const make = (top) => {
+    const layer = Math.random() < 0.45 ? 0 : Math.random() < 0.65 ? 1 : 2;
+    const rnd = ([a, b]) => a + Math.random() * (b - a);
+    return { x: Math.random() * w, y: top ? -6 : Math.random() * h, r: rnd(SIZE[layer]), vy: rnd(SPEED[layer]),
+      sway: Math.random() * Math.PI * 2, swayAmt: 6 + layer * 5, layer };
+  };
   resize();
   flakes = Array.from({ length: Math.round(Math.min(26, w / 15)) }, () => make(false));
   addEventListener("resize", resize);
-  const ALPHA = [0.3, 0.45, 0.65];
+  const ALPHA = [0.28, 0.5, 0.42];
   const tick = (t) => {
     raf = requestAnimationFrame(tick);
     acc += t - last; last = t;
@@ -846,10 +1001,15 @@ render();
         if (f.layer !== layer) continue;
         f.y += f.vy * dt; f.sway += dt * 0.8;
         if (f.y > h + 6) Object.assign(f, make(true));
-        const x = f.x + Math.sin(f.sway) * 10;
+        const x = f.x + Math.sin(f.sway) * f.swayAmt;
         ctx.moveTo(x + f.r, f.y); ctx.arc(x, f.y, f.r, 0, Math.PI * 2);
       }
       ctx.fill();
+      if (layer === 2) {            // a soft glow around the near flakes, so they look out of focus
+        ctx.globalAlpha = 0.1; ctx.beginPath();
+        for (const f of flakes) if (f.layer === 2) { const x = f.x + Math.sin(f.sway) * f.swayAmt; ctx.moveTo(x + f.r * 2.4, f.y); ctx.arc(x, f.y, f.r * 2.4, 0, Math.PI * 2); }
+        ctx.fill();
+      }
     }
   };
   const stop = () => cancelAnimationFrame(raf);
