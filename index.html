@@ -21,7 +21,7 @@
   --ink: #f4efe6;       /* snow white */
   --muted: #8d9a97;
   --line: #22302e;
-  --card: rgba(255, 255, 255, 0.055);
+  --card: #15201f;      /* solid, so snow never shows through cards */
   --accent: #e9c46a;    /* candle gold */
   --berry: #e5484d;
   --yes: #4cc38a;       /* holly green */
@@ -50,7 +50,12 @@ body {
 }
 [hidden] { display: none !important; }
 button { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
-#snow { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+/* Snow only falls in the sky at the top and fades out before the content, so it never crosses the list */
+#snow {
+  position: fixed; inset: 0 0 auto 0; width: 100%; height: 46vh; pointer-events: none; z-index: 0;
+  -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent);
+  mask-image: linear-gradient(to bottom, #000 45%, transparent);
+}
 .wrap { position: relative; z-index: 1; max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 30px; }
 .date { font-size: 0.8rem; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; text-align: center; margin: 0 0 6px; }
 .ask {
@@ -96,7 +101,7 @@ button { touch-action: manipulation; -webkit-user-select: none; user-select: non
 /* Who's playing: an iOS-style inset list */
 .roster { list-style: none; margin: 0; padding: 0 14px; display: flex; flex-direction: column; background: var(--card); border-radius: 16px; }
 .roster:empty { display: none; }
-.roster li { display: flex; align-items: center; gap: 12px; padding: 13px 0; position: relative; will-change: transform; }
+.roster li { display: flex; align-items: center; gap: 12px; padding: 13px 0; position: relative; }
 .roster li + li::before { content: ""; position: absolute; top: 0; left: 22px; right: 0; height: 1px; background: var(--line); }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; transition: background-color .3s var(--ease); }
 .dot.yes { background: var(--yes); } .dot.maybe { background: var(--maybe); } .dot.no { background: var(--no); }
@@ -221,7 +226,7 @@ button { touch-action: manipulation; -webkit-user-select: none; user-select: non
         <button class="chip" id="claimNo" type="button">No, pick another name</button>
       </div>
     </div>
-    <p class="status" id="status">Connecting…</p>
+    <p class="status show" id="status">Connecting…</p>
   </section>
 
   <section aria-label="Who's playing">
@@ -616,41 +621,60 @@ $("nick").addEventListener("blur", () => {
 render();
 
 // --- A little Christmas: light snow drifting behind the app --------------------
-// Few, small, slow flakes; paused when the app is in the background; off for reduced motion.
+// Battery-friendly: ~26 small flakes in the top of the screen only, drawn at most 30 times
+// a second (not 60-120), in three batches per frame, paused whenever the app isn't on screen.
+// Off for people who turn on Reduce Motion.
 (function snow() {
   const canvas = $("snow"), ctx = canvas.getContext("2d");
   if (reduceMotion || !ctx) { canvas.remove(); return; }
-  let w = 0, h = 0, flakes = [], raf = 0, last = 0;
+  const FRAME_MS = 1000 / 30;
+  let w = 0, h = 0, flakes = [], raf = 0, last = 0, acc = 0;
   const resize = () => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    w = innerWidth; h = innerHeight;
-    canvas.width = w * dpr; canvas.height = h * dpr;
+    w = canvas.clientWidth; h = canvas.clientHeight;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
   const make = (top) => ({
-    x: Math.random() * w, y: top ? -10 : Math.random() * h,
-    r: 0.8 + Math.random() * 1.8, vy: 12 + Math.random() * 22, sway: Math.random() * Math.PI * 2,
-    a: 0.25 + Math.random() * 0.45,
+    x: Math.random() * w, y: top ? -6 : Math.random() * h,
+    r: 0.8 + Math.random() * 1.6, vy: 10 + Math.random() * 18, sway: Math.random() * Math.PI * 2,
+    layer: Math.floor(Math.random() * 3), // 3 brightness levels, each drawn as one batch
   });
   resize();
-  flakes = Array.from({ length: Math.round(Math.min(48, w / 9)) }, () => make(false));
+  flakes = Array.from({ length: Math.round(Math.min(26, w / 15)) }, () => make(false));
   addEventListener("resize", resize);
+  const ALPHA = [0.3, 0.45, 0.65];
   const tick = (t) => {
-    const dt = Math.min((t - last) / 1000 || 0, 0.05); last = t;
-    ctx.clearRect(0, 0, w, h);
-    for (const f of flakes) {
-      f.y += f.vy * dt; f.sway += dt * 0.8;
-      const x = f.x + Math.sin(f.sway) * 12;
-      if (f.y > h + 10) Object.assign(f, make(true));
-      ctx.globalAlpha = f.a;
-      ctx.beginPath(); ctx.arc(x, f.y, f.r, 0, Math.PI * 2); ctx.fillStyle = "#fff"; ctx.fill();
-    }
     raf = requestAnimationFrame(tick);
+    acc += t - last; last = t;
+    if (acc < FRAME_MS) return;          // skip frames to stay at ~30 fps
+    const dt = Math.min(acc / 1000, 0.1); acc = 0;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#fff";
+    for (let layer = 0; layer < 3; layer++) {
+      ctx.globalAlpha = ALPHA[layer];
+      ctx.beginPath();
+      for (const f of flakes) {
+        if (f.layer !== layer) continue;
+        f.y += f.vy * dt; f.sway += dt * 0.8;
+        if (f.y > h + 6) Object.assign(f, make(true));
+        const x = f.x + Math.sin(f.sway) * 10;
+        ctx.moveTo(x + f.r, f.y); ctx.arc(x, f.y, f.r, 0, Math.PI * 2);
+      }
+      ctx.fill();
+    }
   };
-  const start = () => { cancelAnimationFrame(raf); last = performance.now(); raf = requestAnimationFrame(tick); };
-  document.addEventListener("visibilitychange", () => document.hidden ? cancelAnimationFrame(raf) : start());
+  const stop = () => cancelAnimationFrame(raf);
+  const start = () => { stop(); last = performance.now(); acc = 0; raf = requestAnimationFrame(tick); };
+  document.addEventListener("visibilitychange", () => document.hidden ? stop() : start());
+  addEventListener("pagehide", stop);
   start();
 })();
+
+// If the app was left open past midnight, reload so "tonight" means today again.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && keyOf(new Date()) !== todayKey) location.reload();
+});
 
 // --- Reminders (push notifications) ---------------------------------------
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
