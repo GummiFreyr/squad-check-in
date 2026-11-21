@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Squad Check-in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sacramento&display=swap">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png?v=xmas">
 <link rel="apple-touch-icon" href="icon-180.png?v=xmas">
@@ -37,9 +40,13 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+/* The page scrolls inside the body, not the whole window: no scroll bar, no rubber-band
+   stretch at the top or bottom, and the warm glow stays put behind everything. */
+html { -webkit-text-size-adjust: 100%; height: 100%; overflow: hidden; background: var(--bg); overscroll-behavior: none; }
 body {
-  margin: 0; min-height: 100vh; color: var(--ink);
+  margin: 0; height: 100%; overflow-y: auto; overscroll-behavior: none; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; color: var(--ink);
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
   background: radial-gradient(ellipse 130% 45% at 50% -8%, var(--glow), transparent 70%) no-repeat, var(--bg);
   font-family: var(--font); font-size: 16px; line-height: 1.45; -webkit-font-smoothing: antialiased;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
@@ -49,6 +56,8 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 [hidden] { display: none !important; }
+body::-webkit-scrollbar { display: none; }
+input { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 button { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 /* Snow only falls in the sky at the top and fades out before the content, so it never crosses the list */
 #snow {
@@ -62,6 +71,28 @@ button { touch-action: manipulation; -webkit-user-select: none; user-select: non
   font-family: var(--font-display); font-weight: 700; font-size: 2rem; line-height: 1.12; letter-spacing: -0.02em;
   text-align: center; margin: 0; text-wrap: balance;
 }
+
+/* Christmas lights: the title is written in one looping script line, like a light cord bent
+   into letters. The cord carries on out of the words into a loop and a drape with classic
+   bulbs. Bulbs twinkle slowly and out of step, never flash. */
+.title-wrap { position: relative; padding: 30px 0 64px; }
+.title-wrap .ask {
+  position: relative; z-index: 1;
+  font-family: "Sacramento", "Snell Roundhand", cursive; font-weight: 400;
+  font-size: 3.5rem; line-height: 1.3; letter-spacing: 0; color: var(--cordc);
+  -webkit-text-stroke: .7px var(--cordc);
+}
+.title-wrap { --cordc: #f1ebdf; }
+.lights { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.lights.back { display: none; }
+.lights.front { z-index: 2; }
+.lights .cord { fill: none; stroke: var(--cordc); stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
+.lights .socket { fill: #9aa6a2; }
+.lights .plug { fill: var(--cordc); }
+.lights .bulb { animation: twinkle 3.6s ease-in-out infinite; }
+.lights .bulb.b { animation-duration: 4.4s; animation-delay: -1.2s; }
+.lights .bulb.c { animation-duration: 5.2s; animation-delay: -2.6s; }
+@keyframes twinkle { 0%, 100% { opacity: 1; } 50% { opacity: .72; } }
 
 /* Answer buttons: springy press, colour fills in when chosen */
 .choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; transition: opacity .3s var(--ease); }
@@ -116,7 +147,7 @@ button { touch-action: manipulation; -webkit-user-select: none; user-select: non
 .week .pill {
   position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 32px) / 7);
   border-radius: 14px; background: rgba(255, 255, 255, 0.1); box-shadow: 0 1px 0 rgba(255,255,255,.06) inset;
-  transition: transform .45s var(--spring);
+  transition: transform .38s var(--ease); /* glides like the iOS switcher, never overshoots the edges */
 }
 .day {
   position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0 9px; border-radius: 14px;
@@ -194,7 +225,11 @@ button { touch-action: manipulation; -webkit-user-select: none; user-select: non
   <nav class="week" id="week" aria-label="Pick a day"></nav>
   <section>
     <p class="date" id="dateLabel"></p>
-    <p class="ask" id="askLabel">Can you play tonight?</p>
+    <div class="title-wrap" id="titleWrap">
+      <svg class="lights back" id="lightsBack" aria-hidden="true"></svg>
+      <p class="ask" id="askLabel">Can you play tonight?</p>
+      <svg class="lights front" id="lightsFront" aria-hidden="true"></svg>
+    </div>
   </section>
 
   <section>
@@ -233,6 +268,7 @@ button { touch-action: manipulation; -webkit-user-select: none; user-select: non
     <ul class="roster" id="roster"></ul>
     <p class="empty" id="rosterEmpty">No answers yet.</p>
   </section>
+
 
 
   <section class="remind" id="remind" hidden>
@@ -373,6 +409,7 @@ function render() {
   const d = selDate();
   $("dateLabel").textContent = d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
   $("askLabel").textContent = `Can you play ${prettyDay(d)}?`;
+  drawLights();
 
   const ids = Object.keys(players);
   const order = { yes: 0, maybe: 1, no: 2 };
@@ -617,6 +654,155 @@ $("nick").addEventListener("blur", () => {
   if (!typedNick() && players[myId]?.nick) $("nick").value = players[myId].nick;
   saveNick(); updateLock();
 });
+
+// --- Christmas lights: the title written as one light cord ----------------------
+// The words are a monoline script in the cord's colour, and one cord joins everything like a
+// light string bent into writing: it starts at a bulb, runs into the first letter, bridges the
+// gaps between words, loops from the end of each line back to the start of the next, then
+// curls out of the last letter into a drape of hanging bulbs that ends at a little plug.
+// Redrawn only when the title's size or text changes.
+const BULB_COLORS = ["#ff5f5f", "#5aa9ff", "#ffd45a", "#52d08a"];
+let lightsKey = "";
+function drawLights() {
+  const wrap = $("titleWrap"), label = $("askLabel");
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  const key = `${w}x${h}|${label.textContent}|${document.fonts?.check?.('1em Sacramento')}`;
+  if (!w || !h || key === lightsKey) return;
+  lightsKey = key;
+  const box = wrap.getBoundingClientRect();
+  const text = label.firstChild;
+  if (!text) return;
+
+  // Letter boxes, grouped into lines and words.
+  const r = document.createRange(), chars = [];
+  for (let i = 0; i < text.length; i++) {
+    r.setStart(text, i); r.setEnd(text, i + 1);
+    const rc = r.getClientRects()[0];
+    if (rc && rc.width) chars.push({ ch: text.data[i], x: rc.left - box.left, y: rc.top - box.top, w: rc.width, h: rc.height });
+  }
+  if (!chars.length) return;
+  const lines = [];
+  for (const c of chars) {
+    let ln = lines[lines.length - 1];
+    if (!ln || Math.abs(ln.y - c.y) > c.h / 2) { ln = { y: c.y, h: c.h, words: [] }; lines.push(ln); }
+    if (c.ch === " ") { ln.gap = true; continue; }
+    let wd = ln.words[ln.words.length - 1];
+    if (!wd || ln.gap) { wd = { x0: c.x, x1: c.x + c.w, chars: [] }; ln.words.push(wd); ln.gap = false; }
+    wd.x1 = c.x + c.w; wd.chars.push(c);
+  }
+  for (const ln of lines) { ln.x0 = ln.words[0].x0; ln.x1 = ln.words[ln.words.length - 1].x1; }
+  const fs = parseFloat(getComputedStyle(label).fontSize);
+  const lineH = fs * 1.3;
+  const join = (ln) => ln.y + ln.h * 0.5 + fs * 0.16;      // where the script's strokes join, near the baseline
+  const inset = fs * 0.04;
+
+  // A cubic piece, sampled, with optional curls (a full turn of the cord) along it.
+  const pieces = [];
+  const curve = (p0, c1, c2, p3, curls = [], N = 160) => {
+    const B = (t) => { const u = 1 - t; return [0, 1].map(k => u*u*u*p0[k] + 3*u*u*t*c1[k] + 3*u*t*t*c2[k] + t*t*t*p3[k]); };
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      let [x, y] = B(t);
+      const a = B(Math.max(0, t - 0.003)), b = B(Math.min(1, t + 0.003));
+      let tx = b[0] - a[0], ty = b[1] - a[1]; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+      for (const c of curls) {
+        const d = t - c.at;
+        if (Math.abs(d) < c.win) {
+          const u = (d + c.win) / (2 * c.win), e = u * u * (3 - 2 * u), phi = 2 * Math.PI * e;
+          const nx = -ty * c.side, ny = tx * c.side;
+          x += c.R * (Math.sin(phi) * tx * 1.5 + (1 - Math.cos(phi)) * nx);
+          y += c.R * (Math.sin(phi) * ty * 1.5 + (1 - Math.cos(phi)) * ny);
+        }
+      }
+      pts.push({ x, y, tx, ty, t });
+    }
+    pieces.push(pts);
+    return pts;
+  };
+
+  let k = 0, bulbs = "";
+  const bulb = (x, y, deg) => {
+    const col = BULB_COLORS[k % 4], tw = ["a", "b", "c"][k % 3]; k++;
+    bulbs += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${deg.toFixed(0)})">` +
+      `<rect class="socket" x="-2.2" y="-1" width="4.4" height="5" rx="1"/>` +
+      `<g class="bulb ${tw}"><ellipse cx="0" cy="9" rx="7.5" ry="9.5" fill="${col}" opacity=".18"/>` +
+      `<path d="M-3 4 C-4.6 7 -4.4 11.5 0 14 C4.4 11.5 4.6 7 3 4 Z" fill="${col}"/>` +
+      `<ellipse cx="-1.2" cy="7.5" rx=".9" ry="1.8" fill="#fff" opacity=".55"/></g></g>`;
+  };
+  // Bulbs spaced along a piece, hanging to one side of it ("down" picks the lower side).
+  const hang = (pts, gap, from = 0.08, to = 0.92, skip = () => false) => {
+    let run = gap * 0.6;
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i];
+      run += Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y);
+      if (run < gap || p.t < from || p.t > to || skip(p.t)) continue;
+      let nx = -p.ty, ny = p.tx; if (ny < 0) { nx = -nx; ny = -ny; }
+      bulb(p.x, p.y, Math.atan2(ny, nx) * 180 / Math.PI - 90);
+      run = 0;
+    }
+  };
+
+  // 1. Lead-in: a bulb up and to the left of the first letter, cord curving down into it.
+  const L0 = lines[0], y0 = join(L0);
+  const st = [L0.x0 - fs * 0.35, L0.y + L0.h * 0.18];
+  curve(st, [st[0] - fs * 0.05, y0 - fs * 0.05], [L0.x0 - fs * 0.25, y0 + fs * 0.05], [L0.x0 + inset, y0]);
+  bulb(st[0], st[1], 145);
+
+  // 2. Bridges over the spaces between words.
+  for (const ln of lines) {
+    const y = join(ln);
+    for (let i = 1; i < ln.words.length; i++) {
+      const a = [ln.words[i - 1].x1 - inset, y], b = [ln.words[i].x0 + inset, y], dip = fs * 0.3;
+      curve(a, [a[0] + (b[0] - a[0]) * 0.33, y + dip], [a[0] + (b[0] - a[0]) * 0.67, y + dip], b, [], 30);
+    }
+  }
+
+  // 3. From the end of each line, curl out to the right, sweep back under it, loop around the
+  //    left and run into the start of the next line.
+  for (let i = 0; i + 1 < lines.length; i++) {
+    const A = lines[i], Bn = lines[i + 1];
+    const ya = join(A), yb = join(Bn), mid = A.y + A.h * 0.5 + lineH * 0.55;
+    const left = Math.min(A.x0, Bn.x0), right = Math.max(A.x1, Bn.x1);
+    const room = Math.min(left, w - right);
+    const pts = curve([A.x1 - inset, ya],
+      [right + Math.min(room, fs * 0.7), ya + fs * 0.1],
+      [left - Math.min(room, fs * 0.9), mid],
+      [Bn.x0 + inset, yb],
+      [{ at: 0.14, R: fs * 0.16, win: 0.06, side: -1 }, { at: 0.86, R: Math.min(fs * 0.26, room * 0.45 + 6), win: 0.07, side: 1 }], 260);
+    hang(pts, fs * 0.75, 0.32, 0.6);
+  }
+
+  // 4. Out of the last letter: a curl on the right, a drape under the words with bulbs hanging
+  //    from it, and the end of the cord dropping to a plug on the left.
+  const L = lines[lines.length - 1], yl = join(L), under = L.y + L.h + fs * 0.18;
+  const roomL = Math.min(L.x0, w - L.x1);
+  const q = [L.x0 + fs * 0.15, under + fs * 0.3];
+  const drape = curve([L.x1 - inset, yl], [L.x1 + Math.min(roomL * 0.8, fs * 0.9), yl + fs * 0.5],
+    [L.x1 - fs * 0.6, under + fs * 0.55], q,
+    [{ at: 0.12, R: Math.min(fs * 0.18, roomL * 0.4 + 2), win: 0.06, side: -1 }], 220);
+  hang(drape, Math.max(30, fs * 0.6), 0.25, 0.97);
+  const plug = [Math.max(8, L.x0 - fs * 0.5), under + fs * 0.62];
+  curve(q, [q[0] - fs * 0.35, q[1] - fs * 0.02], [plug[0] + fs * 0.05, plug[1] - fs * 0.3], plug, [], 60);
+  bulbs += `<g transform="translate(${plug[0].toFixed(1)} ${plug[1].toFixed(1)})">` +
+    `<rect class="plug" x="-4" y="-1" width="8" height="9" rx="2"/>` +
+    `<rect class="plug" x="-2.6" y="8" width="1.4" height="4" rx=".5"/><rect class="plug" x="1.2" y="8" width="1.4" height="4" rx=".5"/></g>`;
+
+  // 5. A bulb or two clipped onto the tall letters of the first line.
+  let lastX = -1e9, n = 0;
+  for (const wd of lines[0].words) for (const c of wd.chars) {
+    if (!/[A-Zbdfhklt]/.test(c.ch) || n >= 3 || (c.y === lines[0].y && c.x - lastX < fs * 1.2)) continue;
+    if (Math.abs(c.x - lastX) < fs * 1.2 || Math.hypot(c.x - st[0], c.y - st[1]) < fs * 1.3) continue;
+    lastX = c.x; n++;
+    bulb(c.x + c.w * 0.55, c.y + c.h * 0.24, 180 + (n % 2 ? 14 : -12));
+  }
+
+  const d = pieces.map(pts => "M" + pts.map(p => p.x.toFixed(1) + " " + p.y.toFixed(1)).join(" L")).join(" ");
+  $("lightsBack").innerHTML = "";
+  $("lightsFront").innerHTML = `<path class="cord" d="${d}"/>` + bulbs;
+}
+document.fonts?.ready.then(() => { lightsKey = ""; drawLights(); });
+new ResizeObserver(drawLights).observe($("titleWrap"));
 
 render();
 
